@@ -173,7 +173,7 @@ class CreditDecoding(DllmAlgorithm):
 
                 raw_top1_full = torch.argmax(curr_logits, dim=-1)
                 raw_top1_logit_full = curr_logits.gather(1, raw_top1_full.unsqueeze(1)).squeeze(1)
-                logZ_full = torch.logsumexp(curr_logits, dim-1)
+                logZ_full = torch.logsumexp(curr_logits, dim=-1)
                 p_raw_full = torch.exp(raw_top1_logit_full - logZ_full)
 
                 self._credit_update_top1_only(
