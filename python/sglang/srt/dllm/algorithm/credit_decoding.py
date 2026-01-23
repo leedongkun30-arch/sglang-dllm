@@ -74,7 +74,7 @@ class CreditDecoding(DllmAlgorithm):
         self.val[batch_id][rows, chosen_slot] += inc
 
         do_insert = (~has)
-        self.idx[batch_id][rows, chosen_slot] = torch.where(do_insert, top1_ids, self.idx[batch_id][rows, chosen_slot])
+        self.idx[batch_id][rows, chosen_slot] = torch.where(do_insert, top1_idx, self.idx[batch_id][rows, chosen_slot])
 
     @torch.no_grad()
     def _fused_top1_prob_sparse_from_raw(
@@ -86,7 +86,7 @@ class CreditDecoding(DllmAlgorithm):
         logZ: torch.Tensor,
     ):
         valid = (self.idx[batch_id] >= 0)
-        ids = torch.where(valid, self.idx[batch_id], 0)
+        idx = torch.where(valid, self.idx[batch_id], 0)
 
         lk = logits.gather(1, idx)
         lk = lk.masked_fill(~valid, torch.finfo(lk.dtype).min)
