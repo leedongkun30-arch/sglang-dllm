@@ -50,7 +50,7 @@ class CreditDecoding(DllmAlgorithm):
     @torch.no_grad()
     def _credit_update_top1_only(
       self,
-      batch_id
+      batch_id,
       top1_idx: torch.Tensor,
       top1_p: torch.Tensor,
     ) -> None:
