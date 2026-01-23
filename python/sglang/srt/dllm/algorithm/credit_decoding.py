@@ -103,9 +103,9 @@ class CreditDecoding(DllmAlgorithm):
         raw_delta = (delta * onehot.to(delta.dtype)).sum(dim=1)
         raw_top1_fused_logit = raw_top1_logit + raw_delta
 
-        choose_k = best_k_logit > raw_top1_fused_logit
+        choose_k = best_k_logits > raw_top1_fused_logit
         fused_top1_id = torch.where(choose_k, best_k_id, raw_top1_id)
-        fused_top1_logit = torch.where(choose_k, best_k_logit, raw_top1_fused_logit)
+        fused_top1_logit = torch.where(choose_k, best_k_logits, raw_top1_fused_logit)
 
         logZ_u = logZ.unsqueeze(1)
 
