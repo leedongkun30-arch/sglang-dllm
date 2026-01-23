@@ -191,7 +191,7 @@ class CreditDecoding(DllmAlgorithm):
                 )
 
                 p = torch.maximum(p_raw_full, p_credit_full)
-                x = torch.maximum(p_credit_full > p_raw_full, x_credit_full, raw_top1_full)
+                x = torch.where(p_credit_full > p_raw_full, x_credit_full, raw_top1_full)
 
                 confidence = torch.where(block_mask_index, p, -np.inf)
                 x = torch.where(block_mask_index, x, block_input_ids)
