@@ -139,7 +139,7 @@ class CreditDecoding(DllmAlgorithm):
             next_token_ids = []
             return logits_output, next_token_ids, can_run_cuda_graph
         
-        self.init_cache(forward_batch.input_idx.device, batch_size)
+        self.init_cache(forward_batch.input_ids.device, batch_size)
         
         # Calculate start positions for each block
         for block_id in range(batch_size):
