@@ -180,7 +180,6 @@ class CreditDecoding(DllmAlgorithm):
                     batch_id=batch_id,
                     top1_idx=raw_top1_full,
                     top1_p=p_raw_full,
-                    batch_id=batch_id,
                 )
 
                 x_credit_full, p_credit_full = self._fused_top1_prob_sparse_from_raw(
