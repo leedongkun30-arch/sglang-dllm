@@ -9,7 +9,7 @@ from test_creditdecoding_pytest import (
 )
 
 def benchmark(device="cuda", iters=50):
-    B, T, K, V = 16, 64, 8, 4096   # 현실적인 크기
+    B, T, K, V = 16, 64, 8, 4096  
     mask_id = 999
     threshold = 0.95
     gamma, lam, alpha, eps = 0.65, 0.70, 0.50, 1e-6
