@@ -108,7 +108,7 @@ if _HAS_TRITON:
         stride_logits_row: tl.constexpr,  # == V
         stride_k: tl.constexpr,           # == K
     ):
-        pid = tl.program_id(0)  # 0..BT-1
+        pid = tl.program_id(0)
 
         base_k = pid * stride_k
         offs_k = tl.arange(0, K)
@@ -117,24 +117,28 @@ if _HAS_TRITON:
         val = tl.load(VAL_PTR + base_k + offs_k, mask=True, other=0).to(tl.float32)
         valid = idx >= 0
 
-        # gather credit logits
         row_ptr = LOGITS_PTR + pid * stride_logits_row
         lk = tl.load(row_ptr + idx, mask=valid, other=-1e20).to(tl.float32)
 
-        delta = lam * tl.log1p(val)
+        # log1p(val) 호환: log(1 + val)
+        delta = lam * tl.log(1.0 + val)
         delta = tl.where(valid, delta, 0.0)
         lk_fused = lk + delta
 
-        # best credit candidate
+        # argmax 호환: max 값만 구하고, "첫 번째로 max와 같은 위치"를 선택
         best_k_logits = tl.max(lk_fused, axis=0)
-        best_k_pos = tl.argmax(lk_fused, axis=0).to(tl.int32)
+
+        # best_k_pos: lk_fused == best_k_logits 인 곳 중 가장 작은 index
+        is_best = lk_fused == best_k_logits
+        best_pos_i = tl.where(is_best, offs_k, 1_000_000)
+        best_k_pos = tl.min(best_pos_i, axis=0).to(tl.int32)
+
         best_k_id = tl.load(IDX_PTR + base_k + best_k_pos, mask=True, other=0).to(tl.int32)
 
         raw_id = tl.load(RAW_TOP1_ID_PTR + pid).to(tl.int32)
         raw_logit = tl.load(RAW_TOP1_LOGIT_PTR + pid).to(tl.float32)
         logZ = tl.load(LOGZ_PTR + pid).to(tl.float32)
 
-        # raw delta if raw_id is in credit slots
         onehot = valid & (idx == raw_id)
         raw_delta = tl.sum(tl.where(onehot, delta, 0.0), axis=0)
         raw_fused_logit = raw_logit + raw_delta
@@ -143,7 +147,6 @@ if _HAS_TRITON:
         fused_id = tl.where(choose_k, best_k_id, raw_id)
         fused_logit = tl.where(choose_k, best_k_logits, raw_fused_logit)
 
-        # sums for normalization correction
         x = lk - logZ
         xb = lk_fused - logZ
         sum_pk = tl.sum(tl.where(valid, tl.exp(x), 0.0), axis=0)
@@ -155,6 +158,7 @@ if _HAS_TRITON:
 
         tl.store(OUT_ID_PTR + pid, fused_id)
         tl.store(OUT_P_PTR + pid, fused_p.to(tl.float32))
+
 
 
 # =============================================================================
