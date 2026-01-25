@@ -4,6 +4,16 @@ Pytest version of the standalone dummy-based tests.
 
 Run:
   pytest -q
+
+What it tests:
+- Piecewise equivalence between Torch reference and Triton kernels (if available on CUDA).
+- End-to-end equivalence (mask fill loop) between "original-like" and "optimized-like"
+  using a deterministic DummyModelRunner.
+
+Notes:
+- Works without sglang.
+- If CUDA is not available, GPU tests are skipped.
+- If Triton is not importable, GPU Triton tests are skipped (but CPU tests still run).
 """
 
 import random
@@ -141,7 +151,7 @@ if HAS_TRITON:
         top1 = tl.load(TOP1_IDX_PTR + pid).to(tl.int32)
         p = tl.load(TOP1_P_PTR + pid).to(tl.float32)
         p = tl.maximum(p, eps)
-        inc = tl.power(p, alpha)
+        inc = tl.exp(tl.log(p) * alpha)
 
         match = idx == top1
         has = tl.sum(match.to(tl.int32), axis=0) > 0
@@ -199,12 +209,19 @@ if HAS_TRITON:
         row_ptr = LOGITS_PTR + pid * stride_logits_row
         lk = tl.load(row_ptr + idx, mask=valid, other=-1e20).to(tl.float32)
 
-        delta = lam * tl.log1p(val)
+        # log1p(val) 호환: log(1 + val)
+        delta = lam * tl.log(1.0 + val)
         delta = tl.where(valid, delta, 0.0)
         lk_fused = lk + delta
 
+        # argmax 호환: max 값만 구하고, "첫 번째로 max와 같은 위치"를 선택
         best_k_logits = tl.max(lk_fused, axis=0)
-        best_k_pos = tl.argmax(lk_fused, axis=0).to(tl.int32)
+
+        # best_k_pos: lk_fused == best_k_logits 인 곳 중 가장 작은 index
+        is_best = lk_fused == best_k_logits
+        best_pos_i = tl.where(is_best, offs_k, 1_000_000)
+        best_k_pos = tl.min(best_pos_i, axis=0).to(tl.int32)
+
         best_k_id = tl.load(IDX_PTR + base_k + best_k_pos, mask=True, other=0).to(tl.int32)
 
         raw_id = tl.load(RAW_TOP1_ID_PTR + pid).to(tl.int32)
