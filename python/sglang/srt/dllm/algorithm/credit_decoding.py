@@ -414,9 +414,7 @@ class CreditDecoding(DllmAlgorithm):
     def _triton_ready(self) -> bool:
         if not _TRITON_OK:
             return False
-        if not hasattr(self, "parallel_decoding_streamed"):
-            return False
-        return ("stream_fuse_kernel" in globals()) 
+        return True
     
     @torch.no_grad()
     def parallel_decoding_dispatch(
