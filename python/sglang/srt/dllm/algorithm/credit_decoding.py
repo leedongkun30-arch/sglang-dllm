@@ -215,7 +215,7 @@ class CreditDecoding(DllmAlgorithm):
         )
 
         if need_alloc:
-            self.state = CreditState32(BT, self.block_size)
+            self.state = CreditState32(BT, self.block_size, device=logits.device)
 
             self._tmp_fused_id = torch.empty((BT,), device=logits.device, dtype=torch.int32)
             self._tmp_conf = torch.empty((BT,), device=logits.device, dtype=torch.float32)
@@ -307,8 +307,19 @@ class CreditDecoding(DllmAlgorithm):
 
         self.bonus_non = torch.where(hit0 | (~hit & (evict == 0)), self.b1, self.b0)
 
-        raw_non_top1 = torch.where(hit0, self.prev1, torch.where(hit1, self.prev0, torch.full_like(self.prev0, -1)))
-        raw_non_top1_logit = logits.gather(1, raw_non_top1.view(BT, 1)).squeeze(1).to(torch.float32)  
+        raw_non_top1 = torch.where(
+            hit0,
+            self.prev1,
+            torch.where(hit1, self.prev0, torch.full_like(self.prev0, -1)),
+        )
+        valid_non_top1 = raw_non_top1.ge(0)
+        safe_non_top1 = torch.where(valid_non_top1, raw_non_top1, torch.zeros_like(raw_non_top1))
+        raw_non_top1_logit = logits.gather(1, safe_non_top1.view(BT, 1)).squeeze(1).to(torch.float32)
+        raw_non_top1_logit = torch.where(
+            valid_non_top1,
+            raw_non_top1_logit,
+            torch.full_like(raw_non_top1_logit, float("-inf")),
+        )
 
 
         delta = self.lam * torch.log1p(self.bonus)
@@ -364,6 +375,10 @@ class CreditDecoding(DllmAlgorithm):
 
     def _triton_ready(self) -> bool:
         if not _TRITON_OK:
+            return False
+        if _is_npu:
+            return False
+        if not torch.cuda.is_available():
             return False
         return True
     
