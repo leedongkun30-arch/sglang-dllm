@@ -4,13 +4,11 @@ Diffusion Large Language Models with Trace Credits (https://arxiv.org/pdf/2510.0
 """
 
 import math
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 import torch.nn.functional as F
-import logging
-
 from sglang.srt.dllm.algorithm.base import DllmAlgorithm
 from sglang.srt.dllm.config import DllmConfig
 from sglang.srt.layers.logits_processor import LogitsProcessorOutput
@@ -210,7 +208,11 @@ class CreditDecoding(DllmAlgorithm):
         BT, V = logits.shape
 
         buf = getattr(self, "state", None)
-        need_alloc = (buf is None)
+        need_alloc = (
+            buf is None
+            or buf.hist_ids.shape[0] != BT
+            or buf.hist_ids.device != logits.device
+        )
 
         if need_alloc:
             self.state = CreditState32(BT, self.block_size)
@@ -355,9 +357,9 @@ class CreditDecoding(DllmAlgorithm):
         transfer_index[select_index_max] = True
  
         new_input_ids = torch.where(transfer_index, x, forward_batch.input_ids)
-        forward_batch.input_ids = new_input_ids
+        forward_batch.input_ids = new_input_ids.to(forward_batch.input_ids.dtype)
 
-        return
+        return logits_output, can_run_cuda_graph
 
 
     def _triton_ready(self) -> bool:
@@ -419,15 +421,14 @@ class CreditDecoding(DllmAlgorithm):
                 break
 
             if _is_npu:
-                self.parallel_decoding_dispatch(
+                logits_output, can_run_cuda_graph = self.parallel_decoding_dispatch(
                     model_runner, forward_batch, mask_index, skip_attn_backend_init
                 )
                 skip_attn_backend_init = True
             else:
-                self.parallel_decoding_dispatch(
+                logits_output, can_run_cuda_graph = self.parallel_decoding_dispatch(
                     model_runner, forward_batch, mask_index, skip_attn_backend_init
                 )
-            logits_output, can_run_cuda_graph = out.logits_output, out.can_run_graph
             assert batch_size == forward_batch.input_ids.shape[0] // self.block_size
             if _is_npu:
                 parallel_decoding_update_input_ids_vectorized(
